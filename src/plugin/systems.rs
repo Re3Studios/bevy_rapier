@@ -261,31 +261,41 @@ pub fn apply_rigid_body_user_changes(
     let context = &mut *context;
     let scale = context.physics_scale;
 
-    // Deal with sleeping first, because other changes may then wake-up the
-    // rigid-body again.
-    for (handle, sleeping) in changed_sleeping.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            let activation = rb.activation_mut();
-            activation.linear_threshold = sleeping.linear_threshold;
-            activation.angular_threshold = sleeping.angular_threshold;
+    {
+        #[cfg(feature = "tracing")]
+        let _span =
+            tracing::trace_span!("apply_rigid_body_user_changes::changed_rb_types").entered();
+        // Deal with sleeping first, because other changes may then wake-up the
+        // rigid-body again.
+        for (handle, sleeping) in changed_sleeping.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                let activation = rb.activation_mut();
+                activation.linear_threshold = sleeping.linear_threshold;
+                activation.angular_threshold = sleeping.angular_threshold;
 
-            if !sleeping.sleeping && activation.sleeping {
-                rb.wake_up(true);
-            } else if sleeping.sleeping && !activation.sleeping {
-                rb.sleep();
+                if !sleeping.sleeping && activation.sleeping {
+                    rb.wake_up(true);
+                } else if sleeping.sleeping && !activation.sleeping {
+                    rb.sleep();
+                }
             }
         }
     }
 
-    // NOTE: we must change the rigid-body type before updating the
-    //       transform or velocity. Otherwise, if the rigid-body was fixed
-    //       and changed to anything else, the velocity change wouldn’t have any effect.
-    //       Similarly, if the rigid-body was kinematic position-based before and
-    //       changed to anything else, a transform change would modify the next
-    //       position instead of the current one.
-    for (handle, rb_type) in changed_rb_types.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.set_body_type((*rb_type).into());
+    {
+        #[cfg(feature = "tracing")]
+        let _span =
+            tracing::trace_span!("apply_rigid_body_user_changes::changed_rb_types").entered();
+        // NOTE: we must change the rigid-body type before updating the
+        //       transform or velocity. Otherwise, if the rigid-body was fixed
+        //       and changed to anything else, the velocity change wouldn’t have any effect.
+        //       Similarly, if the rigid-body was kinematic position-based before and
+        //       changed to anything else, a transform change would modify the next
+        //       position instead of the current one.
+        for (handle, rb_type) in changed_rb_types.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.set_body_type((*rb_type).into());
+            }
         }
     }
 
@@ -348,73 +358,113 @@ pub fn apply_rigid_body_user_changes(
         }
     }
 
-    for (handle, velocity) in changed_velocities.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.set_linvel((velocity.linvel / scale).into(), true);
-            #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
-            rb.set_angvel(velocity.angvel.into(), true);
+    {
+        #[cfg(feature = "tracing")]
+        let _span =
+            tracing::trace_span!("apply_rigid_body_user_changes::changed_velocities").entered();
+        for (handle, velocity) in changed_velocities.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.set_linvel((velocity.linvel / scale).into(), true);
+                #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
+                rb.set_angvel(velocity.angvel.into(), true);
+            }
         }
     }
 
-    for (handle, mprops) in changed_additional_mass_props.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            match mprops {
-                AdditionalMassProperties::MassProperties(mprops) => {
-                    rb.set_additional_mass_properties(mprops.into_rapier(scale), true);
-                }
-                AdditionalMassProperties::Mass(mass) => {
-                    rb.set_additional_mass(*mass, true);
+    {
+        #[cfg(feature = "tracing")]
+        let _span =
+            tracing::trace_span!("apply_rigid_body_user_changes::changed_additional_mass_props")
+                .entered();
+        for (handle, mprops) in changed_additional_mass_props.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                match mprops {
+                    AdditionalMassProperties::MassProperties(mprops) => {
+                        rb.set_additional_mass_properties(mprops.into_rapier(scale), true);
+                    }
+                    AdditionalMassProperties::Mass(mass) => {
+                        rb.set_additional_mass(*mass, true);
+                    }
                 }
             }
         }
     }
 
-    for (handle, locked_axes) in changed_locked_axes.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.set_locked_axes((*locked_axes).into(), true);
+    {
+        #[cfg(feature = "tracing")]
+        let _span =
+            tracing::trace_span!("apply_rigid_body_user_changes::changed_locked_axes").entered();
+        for (handle, locked_axes) in changed_locked_axes.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.set_locked_axes((*locked_axes).into(), true);
+            }
         }
     }
 
-    for (handle, forces) in changed_forces.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.reset_forces(true);
-            rb.reset_torques(true);
-            rb.add_force((forces.force / scale).into(), true);
-            #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
-            rb.add_torque(forces.torque.into(), true);
+    {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::trace_span!("apply_rigid_body_user_changes::changed_forces").entered();
+        for (handle, forces) in changed_forces.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.reset_forces(true);
+                rb.reset_torques(true);
+                rb.add_force((forces.force / scale).into(), true);
+                #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
+                rb.add_torque(forces.torque.into(), true);
+            }
         }
     }
 
-    for (handle, impulses) in changed_impulses.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.apply_impulse((impulses.impulse / scale).into(), true);
-            #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
-            rb.apply_torque_impulse(impulses.torque_impulse.into(), true);
+    {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::trace_span!("apply_rigid_body_user_changes::changed_forces").entered();
+        for (handle, impulses) in changed_impulses.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.apply_impulse((impulses.impulse / scale).into(), true);
+                #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
+                rb.apply_torque_impulse(impulses.torque_impulse.into(), true);
+            }
         }
     }
 
-    for (handle, gravity_scale) in changed_gravity_scale.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.set_gravity_scale(gravity_scale.0, true);
+    {
+        #[cfg(feature = "tracing")]
+        let _span =
+            tracing::trace_span!("apply_rigid_body_user_changes::changed_gravity_scale").entered();
+        for (handle, gravity_scale) in changed_gravity_scale.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.set_gravity_scale(gravity_scale.0, true);
+            }
         }
     }
 
-    for (handle, ccd) in changed_ccd.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.enable_ccd(ccd.enabled);
+    {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::trace_span!("apply_rigid_body_user_changes::changed_ccd").entered();
+        for (handle, ccd) in changed_ccd.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.enable_ccd(ccd.enabled);
+            }
         }
     }
 
-    for (handle, dominance) in changed_dominance.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.set_dominance_group(dominance.groups);
+    {
+        #[cfg(feature = "tracing")]
+        let _span =
+            tracing::trace_span!("apply_rigid_body_user_changes::changed_dominance").entered();
+        for (handle, dominance) in changed_dominance.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.set_dominance_group(dominance.groups);
+            }
         }
     }
 
-    for (handle, damping) in changed_damping.iter() {
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            rb.set_linear_damping(damping.linear_damping);
-            rb.set_angular_damping(damping.angular_damping);
+    {
+        for (handle, damping) in changed_damping.iter() {
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                rb.set_linear_damping(damping.linear_damping);
+                rb.set_angular_damping(damping.angular_damping);
+            }
         }
     }
 }
