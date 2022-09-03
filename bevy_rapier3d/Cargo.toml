@@ -26,6 +26,7 @@ serde-serialize = ["rapier3d/serde-serialize", "serde"]
 simd-nightly = ["rapier3d/simd-nightly"]
 simd-stable = ["rapier3d/simd-stable"]
 wasm-bindgen = ["rapier3d/wasm-bindgen"]
+tracing = []
 
 [dependencies]
 bevy = {path = "../../bevy/", default-features = false}
