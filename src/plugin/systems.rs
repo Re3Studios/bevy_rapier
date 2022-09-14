@@ -262,9 +262,10 @@ pub fn apply_rigid_body_user_changes(
     let scale = context.physics_scale;
 
     {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "trace")]
         let _span =
-            tracing::trace_span!("apply_rigid_body_user_changes::changed_rb_types").entered();
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_rb_types")
+                .entered();
         // Deal with sleeping first, because other changes may then wake-up the
         // rigid-body again.
         for (handle, sleeping) in changed_sleeping.iter() {
@@ -283,9 +284,10 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "trace")]
         let _span =
-            tracing::trace_span!("apply_rigid_body_user_changes::changed_rb_types").entered();
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_rb_types")
+                .entered();
         // NOTE: we must change the rigid-body type before updating the
         //       transform or velocity. Otherwise, if the rigid-body was fixed
         //       and changed to anything else, the velocity change wouldn’t have any effect.
@@ -299,69 +301,78 @@ pub fn apply_rigid_body_user_changes(
         }
     }
 
-    // Manually checks if the transform changed.
-    // This is needed for detecting if the user actually changed the rigid-body
-    // transform, or if it was just the change we made in our `writeback_rigid_bodies`
-    // system.
-    let transform_changed =
-        |handle: &RigidBodyHandle,
-         transform: &GlobalTransform,
-         last_transform_set: &HashMap<RigidBodyHandle, GlobalTransform>| {
-            if let Some(prev) = last_transform_set.get(handle) {
-                *prev != *transform
-            } else {
-                true
-            }
-        };
-
-    for (handle, global_transform, mut interpolation) in changed_transforms.iter_mut() {
-        if let Some(interpolation) = interpolation.as_deref_mut() {
-            // Reset the interpolation so we don’t overwrite
-            // the user’s input.
-            interpolation.start = None;
-            interpolation.end = None;
-        }
-
-        if let Some(rb) = context.bodies.get_mut(handle.0) {
-            match rb.body_type() {
-                RigidBodyType::KinematicPositionBased => {
-                    if transform_changed(
-                        &handle.0,
-                        global_transform,
-                        &context.last_body_transform_set,
-                    ) {
-                        rb.set_next_kinematic_position(utils::transform_to_iso(
-                            &global_transform.compute_transform(),
-                            scale,
-                        ));
-                        context
-                            .last_body_transform_set
-                            .insert(handle.0, *global_transform);
-                    }
+    {
+        #[cfg(feature = "trace")]
+        let _span =
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_transforms")
+                .entered();
+        // Manually checks if the transform changed.
+        // This is needed for detecting if the user actually changed the rigid-body
+        // transform, or if it was just the change we made in our `writeback_rigid_bodies`
+        // system.
+        let transform_changed =
+            |handle: &RigidBodyHandle,
+             transform: &GlobalTransform,
+             last_transform_set: &HashMap<RigidBodyHandle, GlobalTransform>| {
+                if let Some(prev) = last_transform_set.get(handle) {
+                    *prev != *transform
+                } else {
+                    true
                 }
-                _ => {
-                    if transform_changed(
-                        &handle.0,
-                        global_transform,
-                        &context.last_body_transform_set,
-                    ) {
-                        rb.set_position(
-                            utils::transform_to_iso(&global_transform.compute_transform(), scale),
-                            true,
-                        );
-                        context
-                            .last_body_transform_set
-                            .insert(handle.0, *global_transform);
+            };
+
+        for (handle, global_transform, mut interpolation) in changed_transforms.iter_mut() {
+            if let Some(interpolation) = interpolation.as_deref_mut() {
+                // Reset the interpolation so we don’t overwrite
+                // the user’s input.
+                interpolation.start = None;
+                interpolation.end = None;
+            }
+
+            if let Some(rb) = context.bodies.get_mut(handle.0) {
+                match rb.body_type() {
+                    RigidBodyType::KinematicPositionBased => {
+                        if transform_changed(
+                            &handle.0,
+                            global_transform,
+                            &context.last_body_transform_set,
+                        ) {
+                            rb.set_next_kinematic_position(utils::transform_to_iso(
+                                &global_transform.compute_transform(),
+                                scale,
+                            ));
+                            context
+                                .last_body_transform_set
+                                .insert(handle.0, *global_transform);
+                        }
+                    }
+                    _ => {
+                        if transform_changed(
+                            &handle.0,
+                            global_transform,
+                            &context.last_body_transform_set,
+                        ) {
+                            rb.set_position(
+                                utils::transform_to_iso(
+                                    &global_transform.compute_transform(),
+                                    scale,
+                                ),
+                                true,
+                            );
+                            context
+                                .last_body_transform_set
+                                .insert(handle.0, *global_transform);
+                        }
                     }
                 }
             }
         }
     }
-
     {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "trace")]
         let _span =
-            tracing::trace_span!("apply_rigid_body_user_changes::changed_velocities").entered();
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_velocities")
+                .entered();
         for (handle, velocity) in changed_velocities.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.set_linvel((velocity.linvel / scale).into(), true);
@@ -372,10 +383,11 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
-        let _span =
-            tracing::trace_span!("apply_rigid_body_user_changes::changed_additional_mass_props")
-                .entered();
+        #[cfg(feature = "trace")]
+        let _span = bevy::utils::tracing::trace_span!(
+            "apply_rigid_body_user_changes::changed_additional_mass_props"
+        )
+        .entered();
         for (handle, mprops) in changed_additional_mass_props.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 match mprops {
@@ -391,9 +403,10 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "trace")]
         let _span =
-            tracing::trace_span!("apply_rigid_body_user_changes::changed_locked_axes").entered();
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_locked_axes")
+                .entered();
         for (handle, locked_axes) in changed_locked_axes.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.set_locked_axes((*locked_axes).into(), true);
@@ -402,8 +415,10 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
-        let _span = tracing::trace_span!("apply_rigid_body_user_changes::changed_forces").entered();
+        #[cfg(feature = "trace")]
+        let _span =
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_forces")
+                .entered();
         for (handle, forces) in changed_forces.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.reset_forces(true);
@@ -416,8 +431,10 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
-        let _span = tracing::trace_span!("apply_rigid_body_user_changes::changed_forces").entered();
+        #[cfg(feature = "trace")]
+        let _span =
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_forces")
+                .entered();
         for (handle, impulses) in changed_impulses.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.apply_impulse((impulses.impulse / scale).into(), true);
@@ -428,9 +445,11 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
-        let _span =
-            tracing::trace_span!("apply_rigid_body_user_changes::changed_gravity_scale").entered();
+        #[cfg(feature = "trace")]
+        let _span = bevy::utils::tracing::trace_span!(
+            "apply_rigid_body_user_changes::changed_gravity_scale"
+        )
+        .entered();
         for (handle, gravity_scale) in changed_gravity_scale.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.set_gravity_scale(gravity_scale.0, true);
@@ -439,8 +458,9 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
-        let _span = tracing::trace_span!("apply_rigid_body_user_changes::changed_ccd").entered();
+        #[cfg(feature = "trace")]
+        let _span = bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_ccd")
+            .entered();
         for (handle, ccd) in changed_ccd.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.enable_ccd(ccd.enabled);
@@ -449,9 +469,10 @@ pub fn apply_rigid_body_user_changes(
     }
 
     {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "trace")]
         let _span =
-            tracing::trace_span!("apply_rigid_body_user_changes::changed_dominance").entered();
+            bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_dominance")
+                .entered();
         for (handle, dominance) in changed_dominance.iter() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.set_dominance_group(dominance.groups);
@@ -563,11 +584,17 @@ pub fn writeback_rigid_bodies(
                                     .affine()
                                     .inverse()
                                     .to_scale_rotation_translation();
-                            transform.rotation =
-                                inverse_parent_rotation * interpolated_pos.rotation;
-                            transform.translation = inverse_parent_rotation
-                                * interpolated_pos.translation
-                                + inverse_parent_translation;
+                            let new_local_transform = Transform {
+                                rotation: inverse_parent_rotation * interpolated_pos.rotation,
+                                translation: inverse_parent_rotation * interpolated_pos.translation
+                                    + inverse_parent_translation,
+                                ..default()
+                            };
+
+                            if transform.as_ref() != &new_local_transform {
+                                transform.rotation = new_local_transform.rotation;
+                                transform.translation = new_local_transform.translation;
+                            }
 
                             #[cfg(feature = "dim2")]
                             {
@@ -589,13 +616,14 @@ pub fn writeback_rigid_bodies(
                             {
                                 interpolated_pos.translation.z = transform.translation.z;
                             }
-
-                            transform.rotation = interpolated_pos.rotation;
-                            transform.translation = interpolated_pos.translation;
-
-                            context
+                            if transform.as_ref() != &interpolated_pos {
+                                transform.rotation = interpolated_pos.rotation;
+                                transform.translation = interpolated_pos.translation;
+                                
+                                context
                                 .last_body_transform_set
                                 .insert(handle, GlobalTransform::from(interpolated_pos));
+                            }
                         }
                     }
 
