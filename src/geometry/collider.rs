@@ -17,7 +17,7 @@ use crate::math::Vect;
 pub struct RapierColliderHandle(pub ColliderHandle);
 
 /// A component which will be replaced by the specified collider type after the referenced mesh become available.
-#[cfg(feature = "dim3")]
+#[cfg(all(feature = "dim3", feature = "bevy-render"))]
 #[derive(Component, Debug, Clone, Reflect)]
 #[reflect(Component)]
 pub struct AsyncCollider {
@@ -27,7 +27,7 @@ pub struct AsyncCollider {
     pub shape: ComputedColliderShape,
 }
 
-#[cfg(feature = "dim3")]
+#[cfg(all(feature = "dim3", feature = "bevy-render"))]
 impl Default for AsyncCollider {
     fn default() -> Self {
         Self {
@@ -38,7 +38,7 @@ impl Default for AsyncCollider {
 }
 
 /// A component which will be replaced the specified collider types on children with meshes after the referenced scene become available.
-#[cfg(feature = "dim3")]
+#[cfg(all(feature = "dim3", feature = "bevy-render"))]
 #[derive(Component, Debug, Clone)]
 pub struct AsyncSceneCollider {
     /// Scene handle to use for colliders generation.

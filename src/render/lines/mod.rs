@@ -1,4 +1,6 @@
 #![allow(warnings)]
+#[cfg(feature = "bevy-render")]
+use bevy::asset::{Assets, HandleUntyped};
 /**
  *
  * NOTE: this module and its submodules are only temporary. It is a copy-paste of the bevy-debug-lines
@@ -14,7 +16,6 @@
  *
  */
 use bevy::{
-    asset::{Assets, HandleUntyped},
     prelude::*,
     reflect::TypeUuid,
     render::{

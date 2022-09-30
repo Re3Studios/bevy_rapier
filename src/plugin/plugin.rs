@@ -55,6 +55,7 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> RapierPhysicsPlugin<P
     /// Provided for use when staging systems outside of this plugin using
     /// [`with_system_setup(false)`](Self::with_system_setup).
     /// See [`PhysicsStages`] for a description of these systems.
+    #[cfg(feature = "bevy-render")]
     pub fn get_systems(stage: PhysicsStages) -> SystemSet {
         match stage {
             PhysicsStages::SyncBackend => {
@@ -64,7 +65,9 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> RapierPhysicsPlugin<P
                         systems::init_async_colliders
                             .after(bevy::transform::transform_propagate_system),
                     )
-                    .with_system(systems::apply_scale.after(systems::init_async_colliders))
+                    .with_system(
+                        systems::apply_scale.after(bevy::transform::transform_propagate_system), // .after(systems::init_async_colliders)
+                    )
                     .with_system(systems::apply_collider_user_changes.after(systems::apply_scale))
                     .with_system(
                         systems::apply_rigid_body_user_changes
@@ -180,7 +183,7 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> Plugin
             .register_type::<SolverGroups>()
             .register_type::<ContactForceEventThreshold>();
 
-        #[cfg(feature = "dim3")]
+        #[cfg(all(feature = "dim3", feature = "bevy-render"))]
         app.register_type::<AsyncCollider>();
 
         // Insert all of our required resources. Don’t overwrite
@@ -196,7 +199,8 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> Plugin
             })
             .insert_resource(Events::<CollisionEvent>::default())
             .insert_resource(Events::<ContactForceEvent>::default());
-
+        
+            #[cfg(feature = "bevy-render")]
         // Add each stage as necessary
         if self.default_system_setup {
             app.add_stage_after(

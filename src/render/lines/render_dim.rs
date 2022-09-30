@@ -1,4 +1,4 @@
-#[cfg(feature = "dim3")]
+#[cfg(all(feature = "dim3", feature = "bevy-render"))]
 pub mod r3d {
     use bevy::{
         core_pipeline::core_3d::Opaque3d,

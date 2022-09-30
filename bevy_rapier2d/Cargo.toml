@@ -18,8 +18,13 @@ path = "../src/lib.rs"
 required-features = [ "dim2" ]
 
 [features]
-default = [ "dim2", "debug-render" ]
-dim2 = ["bevy/bevy_render"]
+default = [ "dim2", "bevy-render", "debug-render" ]
+dim2 = []
+bevy-render = [ 
+    "bevy/bevy_render", 
+    "bevy/bevy_asset", 
+    "bevy/bevy_scene"
+]
 debug-render = [ "bevy/bevy_core_pipeline", "bevy/bevy_render", "bevy/bevy_sprite", "rapier2d/debug-render" ]
 parallel = [ "rapier2d/parallel" ]
 simd-stable = [ "rapier2d/simd-stable" ]
@@ -29,7 +34,7 @@ serde-serialize = [ "rapier2d/serde-serialize", "serde" ]
 enhanced-determinism = [ "rapier2d/enhanced-determinism" ]
 
 [dependencies]
-bevy = { version = "0.8.0", default-features = false, features = ["bevy_asset", "bevy_scene"] }
+bevy = { version = "0.8.0", default-features = false }
 nalgebra = { version = "^0.31.1", features = [ "convert-glam021" ] }
 # Don't enable the default features because we don't need the ColliderSet/RigidBodySet
 rapier2d = "0.14.0"

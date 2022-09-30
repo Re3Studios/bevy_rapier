@@ -14,6 +14,7 @@ use crate::geometry::{Collider, PointProjection, RayIntersection, Toi};
 use crate::math::{Rot, Vect};
 use crate::pipeline::{CollisionEvent, ContactForceEvent, EventQueue, QueryFilter};
 use bevy::prelude::{Entity, EventWriter, GlobalTransform, Query};
+#[cfg(feature = "bevy-render")]
 use bevy::render::primitives::Aabb;
 
 use crate::dynamics::TransformInterpolation;
@@ -559,6 +560,7 @@ impl RapierContext {
     }
 
     /// Finds all entities of all the colliders with an AABB intersecting the given AABB.
+    #[cfg(feature = "bevy-render")]
     pub fn colliders_with_aabb_intersecting_aabb(
         &self,
         aabb: Aabb,
