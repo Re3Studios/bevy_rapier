@@ -33,6 +33,7 @@ wasm-bindgen = [ "rapier3d/wasm-bindgen" ]
 serde-serialize = [ "rapier3d/serde-serialize", "serde" ]
 enhanced-determinism = [ "rapier3d/enhanced-determinism" ]
 trace = ["bevy/trace"]
+profiler = ["rapier3d/profiler"]
 
 [dependencies]
 bevy = { path = "./../../bevy", default-features = false }
