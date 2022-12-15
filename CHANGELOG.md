@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.19.0 (18 Nov. 2022)
+### Modified
+- Update to Bevy 0.9
+
+## 0.18.0 (30 Oct. 2022)
+### Added
+- Add the accessor `RapierContext::physics_scale()` to read the physics scale
+  that was set when initializing the plugin.
+- Add `RapierConfiguration::force_update_from_transform_changes` to force the transform
+  updates even if it is equal to the transform that was previously set. Useful for
+  rollback in networked applications described in [#261](https://github.com/dimforge/bevy_rapier/pull/261).
+- Add `Collider::trimesh_with_flags` to create a triangle mesh collider with custom pre-processing
+  flags.
+
+### Fix
+- Reset the `ExternalImpulse` component after each step automatically.
+- Fix `transform_to_iso` to preserve identical rotations instead of 
+  converting to an intermediate axis-angle representation.
+- Fix **internal edges** of 3D triangle meshes or 3D heightfields generating invalid contacts
+  preventing balls from moving straight. Be sure to set the triangle mesh flag
+  `TriMeshFlags::MERGE_DUPLICATE_VERTICES` when creating the collider if your mesh have duplicated
+  vertices.
+
+### Modified
+- Rename `AABB` to `Aabb` to comply with Rust’s style guide.
+
+## 0.17.0 (02 Oct. 2022)
+### Added
+- Add a **kinematic character controller** implementation. This feature is accessible in two different ways:
+  1. The first approach is to insert the `KinematicCharacterController` component to an entity. If the
+  `KinematicCharacterController::custom_shape` field is set, then this shape is used for the character control.
+  If this field is `None` then the `Collider` attached to the same entity as the character controller is used.
+  The character controller will be automatically updated when the `KinematicCharacterController::movement` is set.
+  The result position is written to the `Transform` of the character controller’s entity.
+  2. The second, lower level, approach, is to call `RapierContext::move_shape` to compute the possible movement
+  of a shape, taking obstacle and sliding into account.
+- Add implementations of `Add`, `AddAssign`, `Sub`, `SubAssign` to `ExternalForce` and `ExternalImpulse`.
+- Add `ExternalForce::at_point` and `ExternalImpulse::at_point` to apply a force/impulse at a specific point
+  of a rigid-body.
+
+### Fix
+- Fix shapes quickly switching between scaled and non-scaled versions due to rounding errors in the scaling extraction
+  from bevy’s global affine transform.
+
 ## 0.16.2 (23 August 2022)
 ### Added
 - Implement `Debug` for `Collider` and `ColliderView`.

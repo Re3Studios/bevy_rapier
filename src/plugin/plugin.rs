@@ -60,7 +60,11 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> RapierPhysicsPlugin<P
         match stage {
             PhysicsStages::SyncBackend => {
                 let systems = SystemSet::new()
-                    .with_system(bevy::transform::transform_propagate_system) // Run Bevy transform propagation additionaly to sync [`GlobalTransform`]
+                    .with_system(systems::update_character_controls) // Run the character controller befor ethe manual transform propagation.
+                    .with_system(
+                        bevy::transform::transform_propagate_system
+                            .after(systems::update_character_controls),
+                    ) // Run Bevy transform propagation additionally to sync [`GlobalTransform`]
                     .with_system(
                         systems::init_async_colliders
                             .after(bevy::transform::transform_propagate_system),
@@ -183,9 +187,6 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> Plugin
             .register_type::<SolverGroups>()
             .register_type::<ContactForceEventThreshold>();
 
-        #[cfg(all(feature = "dim3", feature = "bevy-render"))]
-        app.register_type::<AsyncCollider>();
-
         // Insert all of our required resources. Don’t overwrite
         // the `RapierConfiguration` if it already exists.
         if app.world.get_resource::<RapierConfiguration>().is_none() {
@@ -199,8 +200,8 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> Plugin
             })
             .insert_resource(Events::<CollisionEvent>::default())
             .insert_resource(Events::<ContactForceEvent>::default());
-        
-            #[cfg(feature = "bevy-render")]
+
+        #[cfg(feature = "bevy-render")]
         // Add each stage as necessary
         if self.default_system_setup {
             app.add_stage_after(

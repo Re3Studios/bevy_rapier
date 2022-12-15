@@ -16,7 +16,9 @@ use crate::pipeline::{
 };
 use crate::plugin::configuration::{SimulationToRenderTime, TimestepMode};
 use crate::plugin::{RapierConfiguration, RapierContext};
-use crate::prelude::CollidingEntities;
+use crate::prelude::{
+    CollidingEntities, KinematicCharacterController, KinematicCharacterControllerOutput,
+};
 use crate::utils;
 use bevy::ecs::query::WorldQuery;
 use bevy::prelude::*;
@@ -26,6 +28,8 @@ use std::collections::HashMap;
 #[cfg(all(feature = "dim3", feature = "bevy-render"))]
 use crate::prelude::{AsyncCollider, AsyncSceneCollider};
 
+use crate::control::CharacterCollision;
+use crate::utils::transform_to_iso;
 #[cfg(feature = "dim2")]
 use bevy::math::Vec3Swizzles;
 
@@ -235,6 +239,7 @@ pub fn apply_collider_user_changes(
 /// System responsible for applying changes the user made to a rigid-body-related component.
 pub fn apply_rigid_body_user_changes(
     mut context: ResMut<RapierContext>,
+    config: Res<RapierConfiguration>,
     changed_rb_types: Query<(&RapierRigidBodyHandle, &RigidBody), Changed<RigidBody>>,
     mut changed_transforms: Query<
         (
@@ -251,7 +256,10 @@ pub fn apply_rigid_body_user_changes(
     >,
     changed_locked_axes: Query<(&RapierRigidBodyHandle, &LockedAxes), Changed<LockedAxes>>,
     changed_forces: Query<(&RapierRigidBodyHandle, &ExternalForce), Changed<ExternalForce>>,
-    changed_impulses: Query<(&RapierRigidBodyHandle, &ExternalImpulse), Changed<ExternalImpulse>>,
+    mut changed_impulses: Query<
+        (&RapierRigidBodyHandle, &mut ExternalImpulse),
+        Changed<ExternalImpulse>,
+    >,
     changed_gravity_scale: Query<(&RapierRigidBodyHandle, &GravityScale), Changed<GravityScale>>,
     changed_ccd: Query<(&RapierRigidBodyHandle, &Ccd), Changed<Ccd>>,
     changed_dominance: Query<(&RapierRigidBodyHandle, &Dominance), Changed<Dominance>>,
@@ -301,6 +309,22 @@ pub fn apply_rigid_body_user_changes(
         }
     }
 
+    // Manually checks if the transform changed.
+    // This is needed for detecting if the user actually changed the rigid-body
+    // transform, or if it was just the change we made in our `writeback_rigid_bodies`
+    // system.
+    let transform_changed =
+        |handle: &RigidBodyHandle,
+         transform: &GlobalTransform,
+         last_transform_set: &HashMap<RigidBodyHandle, GlobalTransform>| {
+            if config.force_update_from_transform_changes {
+                true
+            } else if let Some(prev) = last_transform_set.get(handle) {
+                *prev != *transform
+            } else {
+                true
+            }
+        };
     {
         #[cfg(feature = "trace")]
         let _span =
@@ -435,11 +459,12 @@ pub fn apply_rigid_body_user_changes(
         let _span =
             bevy::utils::tracing::trace_span!("apply_rigid_body_user_changes::changed_forces")
                 .entered();
-        for (handle, impulses) in changed_impulses.iter() {
+        for (handle, mut impulses) in changed_impulses.iter_mut() {
             if let Some(rb) = context.bodies.get_mut(handle.0) {
                 rb.apply_impulse((impulses.impulse / scale).into(), true);
                 #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
                 rb.apply_torque_impulse(impulses.torque_impulse.into(), true);
+                impulses.reset();
             }
         }
     }
@@ -784,7 +809,7 @@ pub fn init_colliders(
     parent_query: Query<(&Parent, Option<&Transform>)>,
 ) {
     let context = &mut *context;
-    let scale = context.physics_scale;
+    let physics_scale = context.physics_scale;
 
     for (
         entity,
@@ -802,7 +827,7 @@ pub fn init_colliders(
     ) in colliders.iter()
     {
         let mut scaled_shape = shape.clone();
-        scaled_shape.set_scale(shape.scale / scale, config.scaled_shape_subdivision);
+        scaled_shape.set_scale(shape.scale / physics_scale, config.scaled_shape_subdivision);
         let mut builder = ColliderBuilder::new(scaled_shape.raw.clone());
 
         builder = builder.sensor(sensor.is_some());
@@ -812,7 +837,7 @@ pub fn init_colliders(
                 ColliderMassProperties::Density(density) => builder.density(*density),
                 ColliderMassProperties::Mass(mass) => builder.mass(*mass),
                 ColliderMassProperties::MassProperties(mprops) => {
-                    builder.mass_properties(mprops.into_rapier(scale))
+                    builder.mass_properties(mprops.into_rapier(physics_scale))
                 }
             };
         }
@@ -869,7 +894,7 @@ pub fn init_colliders(
             body_handle = context.entity2body.get(&body_entity).copied();
         }
 
-        builder = builder.position(utils::transform_to_iso(&child_transform, scale));
+        builder = builder.position(utils::transform_to_iso(&child_transform, physics_scale));
         builder = builder.user_data(entity.to_bits() as u128);
 
         let handle = if let Some(body_handle) = body_handle {
@@ -881,7 +906,8 @@ pub fn init_colliders(
                 // Inserting the collider changed the rigid-body’s mass properties.
                 // Read them back from the engine.
                 if let Some(parent_body) = context.bodies.get(body_handle) {
-                    mprops.0 = MassProperties::from_rapier(*parent_body.mass_properties(), scale);
+                    mprops.0 =
+                        MassProperties::from_rapier(*parent_body.mass_properties(), physics_scale);
                 }
             }
             handle
@@ -900,7 +926,7 @@ pub fn init_rigid_bodies(
     mut context: ResMut<RapierContext>,
     rigid_bodies: Query<RigidBodyComponents, Without<RapierRigidBodyHandle>>,
 ) {
-    let scale = context.physics_scale;
+    let physics_scale = context.physics_scale;
 
     for (
         entity,
@@ -922,14 +948,14 @@ pub fn init_rigid_bodies(
         if let Some(transform) = transform {
             builder = builder.position(utils::transform_to_iso(
                 &transform.compute_transform(),
-                scale,
+                physics_scale,
             ));
         }
 
         #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
         if let Some(vel) = vel {
             builder = builder
-                .linvel((vel.linvel / scale).into())
+                .linvel((vel.linvel / physics_scale).into())
                 .angvel(vel.angvel.into());
         }
 
@@ -962,7 +988,7 @@ pub fn init_rigid_bodies(
         if let Some(mprops) = additional_mass_props {
             builder = match mprops {
                 AdditionalMassProperties::MassProperties(mprops) => {
-                    builder.additional_mass_properties(mprops.into_rapier(scale))
+                    builder.additional_mass_properties(mprops.into_rapier(physics_scale))
                 }
                 AdditionalMassProperties::Mass(mass) => builder.additional_mass(*mass),
             };
@@ -974,7 +1000,7 @@ pub fn init_rigid_bodies(
 
         #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
         if let Some(force) = force {
-            rb.add_force((force.force / scale).into(), false);
+            rb.add_force((force.force / physics_scale).into(), false);
             rb.add_torque(force.torque.into(), false);
         }
 
@@ -1009,12 +1035,12 @@ pub fn apply_initial_rigid_body_impulses(
     mut context: ResMut<RapierContext>,
     // We can’t use RapierRigidBodyHandle yet because its creation command hasn’t been
     // executed yet.
-    init_impulses: Query<(Entity, &ExternalImpulse), Without<RapierRigidBodyHandle>>,
+    mut init_impulses: Query<(Entity, &mut ExternalImpulse), Without<RapierRigidBodyHandle>>,
 ) {
     let context = &mut *context;
     let scale = context.physics_scale;
 
-    for (entity, impulse) in init_impulses.iter() {
+    for (entity, mut impulse) in init_impulses.iter_mut() {
         let bodies = &mut context.bodies;
         if let Some(rb) = context
             .entity2body
@@ -1028,6 +1054,8 @@ pub fn apply_initial_rigid_body_impulses(
 
             #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
             rb.apply_torque_impulse(impulse.torque_impulse.into(), false);
+
+            impulse.reset();
         }
     }
 }
@@ -1241,6 +1269,166 @@ pub fn update_colliding_entities(
     }
 }
 
+/// System responsible for applying the character controller translation to the underlying
+/// collider.
+pub fn update_character_controls(
+    mut commands: Commands,
+    config: Res<RapierConfiguration>,
+    mut context: ResMut<RapierContext>,
+    mut character_controllers: Query<(
+        Entity,
+        &mut KinematicCharacterController,
+        Option<&mut KinematicCharacterControllerOutput>,
+        Option<&RapierColliderHandle>,
+        Option<&RapierRigidBodyHandle>,
+        Option<&GlobalTransform>,
+    )>,
+    mut transforms: Query<&mut Transform>,
+) {
+    let physics_scale = context.physics_scale;
+    let context = &mut *context;
+    for (entity, mut controller, output, collider_handle, body_handle, glob_transform) in
+        character_controllers.iter_mut()
+    {
+        if let (Some(raw_controller), Some(translation)) =
+            (controller.to_raw(physics_scale), controller.translation)
+        {
+            let scaled_custom_shape =
+                controller
+                    .custom_shape
+                    .as_ref()
+                    .map(|(custom_shape, tra, rot)| {
+                        // TODO: avoid the systematic scale somehow?
+                        let mut scaled_shape = custom_shape.clone();
+                        scaled_shape.set_scale(
+                            custom_shape.scale / physics_scale,
+                            config.scaled_shape_subdivision,
+                        );
+
+                        (scaled_shape, *tra / physics_scale, *rot)
+                    });
+
+            let parent_rigid_body = body_handle.map(|h| h.0).or_else(|| {
+                collider_handle
+                    .and_then(|h| context.colliders.get(h.0))
+                    .and_then(|c| c.parent())
+            });
+            let entity_to_move = parent_rigid_body
+                .and_then(|rb| context.rigid_body_entity(rb))
+                .unwrap_or(entity);
+
+            let (character_shape, character_pos) = if let Some((scaled_shape, tra, rot)) =
+                &scaled_custom_shape
+            {
+                let mut shape_pos: Isometry<Real> = (*tra, *rot).into();
+
+                if let Some(body) = body_handle.and_then(|h| context.bodies.get(h.0)) {
+                    shape_pos = body.position() * shape_pos
+                } else if let Some(gtransform) = glob_transform {
+                    shape_pos =
+                        transform_to_iso(&gtransform.compute_transform(), physics_scale) * shape_pos
+                }
+
+                (&*scaled_shape.raw, shape_pos)
+            } else if let Some(collider) = collider_handle.and_then(|h| context.colliders.get(h.0))
+            {
+                (collider.shape(), *collider.position())
+            } else {
+                continue;
+            };
+
+            let exclude_collider = collider_handle.map(|h| h.0);
+
+            let character_mass = controller
+                .custom_mass
+                .or_else(|| {
+                    parent_rigid_body
+                        .and_then(|h| context.bodies.get(h))
+                        .map(|rb| rb.mass())
+                })
+                .unwrap_or(0.0);
+
+            let mut filter = QueryFilter {
+                flags: controller.filter_flags,
+                groups: controller.filter_groups,
+                exclude_collider: None,
+                exclude_rigid_body: None,
+                predicate: None,
+            };
+
+            if let Some(parent) = parent_rigid_body {
+                filter = filter.exclude_rigid_body(parent);
+            } else if let Some(excl_co) = exclude_collider {
+                filter = filter.exclude_collider(excl_co)
+            };
+
+            let collisions = &mut context.character_collisions_collector;
+            collisions.clear();
+
+            let movement = raw_controller.move_shape(
+                context.integration_parameters.dt,
+                &context.bodies,
+                &context.colliders,
+                &context.query_pipeline,
+                character_shape,
+                &character_pos,
+                (translation / physics_scale).into(),
+                filter,
+                |c| collisions.push(c),
+            );
+
+            if controller.apply_impulse_to_dynamic_bodies {
+                for collision in &*collisions {
+                    raw_controller.solve_character_collision_impulses(
+                        context.integration_parameters.dt,
+                        &mut context.bodies,
+                        &context.colliders,
+                        &context.query_pipeline,
+                        character_shape,
+                        character_mass,
+                        collision,
+                        filter,
+                    )
+                }
+            }
+
+            if let Ok(mut transform) = transforms.get_mut(entity_to_move) {
+                // TODO: take the parent’s GlobalTransform rotation into account?
+                transform.translation.x += movement.translation.x * physics_scale;
+                transform.translation.y += movement.translation.y * physics_scale;
+                #[cfg(feature = "dim3")]
+                {
+                    transform.translation.z += movement.translation.z * physics_scale;
+                }
+            }
+
+            let converted_collisions = context
+                .character_collisions_collector
+                .iter()
+                .filter_map(|c| CharacterCollision::from_raw(context, c));
+
+            if let Some(mut output) = output {
+                output.desired_translation = controller.translation.unwrap(); // Already takes the physics_scale into account.
+                output.effective_translation = (movement.translation * physics_scale).into();
+                output.grounded = movement.grounded;
+                output.collisions.clear();
+                output.collisions.extend(converted_collisions);
+            } else {
+                commands
+                    .entity(entity)
+                    .insert(KinematicCharacterControllerOutput {
+                        desired_translation: controller.translation.unwrap(), // Already takes the physics_scale into account.
+                        effective_translation: (movement.translation * physics_scale).into(),
+                        grounded: movement.grounded,
+                        collisions: converted_collisions.collect(),
+                    });
+            }
+
+            controller.translation = None;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "dim3")]
@@ -1267,8 +1455,8 @@ mod tests {
         app.add_event::<CollisionEvent>()
             .add_system(update_colliding_entities);
 
-        let entity1 = app.world.spawn().insert(CollidingEntities::default()).id();
-        let entity2 = app.world.spawn().insert(CollidingEntities::default()).id();
+        let entity1 = app.world.spawn(CollidingEntities::default()).id();
+        let entity2 = app.world.spawn(CollidingEntities::default()).id();
 
         let mut collision_events = app
             .world
@@ -1357,14 +1545,13 @@ mod tests {
     //     let mut meshes = app.world.resource_mut::<Assets<Mesh>>();
     //     let cube = meshes.add(Cube::default().into());
 
-    //     let entity = app
-    //         .world
-    //         .spawn()
-    //         .insert(AsyncCollider {
-    //             handle: cube,
-    //             shape: ComputedColliderShape::TriMesh,
-    //         })
-    //         .id();
+    // let entity = app
+    //     .world
+    //     .spawn(AsyncCollider {
+    //         handle: cube,
+    //         shape: ComputedColliderShape::TriMesh,
+    //     })
+    //     .id();
 
     //     app.update();
 
@@ -1386,37 +1573,26 @@ mod tests {
     //     app.add_plugin(HeadlessRenderPlugin)
     //         .add_system(init_async_scene_colliders);
 
-    //     let mut meshes = app.world.resource_mut::<Assets<Mesh>>();
-    //     let cube_handle = meshes.add(Cube::default().into());
-    //     let capsule_handle = meshes.add(Capsule::default().into());
-    //     let cube = app
-    //         .world
-    //         .spawn()
-    //         .insert(Name::new("Cube"))
-    //         .insert(cube_handle)
-    //         .id();
-    //     let capsule = app
-    //         .world
-    //         .spawn()
-    //         .insert(Name::new("Capsule"))
-    //         .insert(capsule_handle)
-    //         .id();
+    // let mut meshes = app.world.resource_mut::<Assets<Mesh>>();
+    // let cube_handle = meshes.add(Cube::default().into());
+    // let capsule_handle = meshes.add(Capsule::default().into());
+    // let cube = app.world.spawn((Name::new("Cube"), cube_handle)).id();
+    // let capsule = app.world.spawn((Name::new("Capsule"), capsule_handle)).id();
 
     //     let mut scenes = app.world.resource_mut::<Assets<Scene>>();
     //     let scene = scenes.add(Scene::new(World::new()));
 
-    //     let mut named_shapes = bevy::utils::HashMap::new();
-    //     named_shapes.insert("Capsule".to_string(), None);
-    //     let parent = app
-    //         .world
-    //         .spawn()
-    //         .insert(AsyncSceneCollider {
-    //             handle: scene,
-    //             shape: Some(ComputedColliderShape::TriMesh),
-    //             named_shapes,
-    //         })
-    //         .push_children(&[cube, capsule])
-    //         .id();
+    // let mut named_shapes = bevy::utils::HashMap::new();
+    // named_shapes.insert("Capsule".to_string(), None);
+    // let parent = app
+    //     .world
+    //     .spawn(AsyncSceneCollider {
+    //         handle: scene,
+    //         shape: Some(ComputedColliderShape::TriMesh),
+    //         named_shapes,
+    //     })
+    //     .push_children(&[cube, capsule])
+    //     .id();
 
     //     app.update();
 
@@ -1462,15 +1638,15 @@ mod tests {
         for (child_transform, parent_transform) in [zero, same, different] {
             let child = app
                 .world
-                .spawn()
-                .insert_bundle(TransformBundle::from(child_transform))
-                .insert(RigidBody::Fixed)
-                .insert(Collider::ball(1.0))
+                .spawn((
+                    TransformBundle::from(child_transform),
+                    RigidBody::Fixed,
+                    Collider::ball(1.0),
+                ))
                 .id();
 
             app.world
-                .spawn()
-                .insert_bundle(TransformBundle::from(parent_transform))
+                .spawn(TransformBundle::from(parent_transform))
                 .push_children(&[child]);
 
             app.update();
@@ -1520,16 +1696,12 @@ mod tests {
         for (child_transform, parent_transform) in [zero, same, different] {
             let child = app
                 .world
-                .spawn()
-                .insert_bundle(TransformBundle::from(child_transform))
-                .insert(Collider::ball(1.0))
+                .spawn((TransformBundle::from(child_transform), Collider::ball(1.0)))
                 .id();
 
             let parent = app
                 .world
-                .spawn()
-                .insert_bundle(TransformBundle::from(parent_transform))
-                .insert(RigidBody::Fixed)
+                .spawn((TransformBundle::from(parent_transform), RigidBody::Fixed))
                 .push_children(&[child])
                 .id();
 
@@ -1584,7 +1756,8 @@ mod tests {
             .add_plugin(WindowPlugin::default())
             // .add_plugin(AssetPlugin::default())
             // .add_plugin(ScenePlugin::default())
-            .add_plugin(RenderPlugin::default());
+            // .add_plugin(RenderPlugin::default())
+            .add_plugin(ImagePlugin::default());
         }
     }
 }

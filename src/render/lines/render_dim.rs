@@ -25,6 +25,7 @@ pub mod r3d {
 
     use super::super::{DebugLinesConfig, RenderDebugLinesMesh, DEBUG_LINES_SHADER_HANDLE};
 
+    #[derive(Resource)]
     pub(crate) struct DebugLinePipeline {
         mesh_pipeline: MeshPipeline,
         shader: Handle<Shader>,
@@ -136,6 +137,7 @@ pub mod r3d {
         config: Res<DebugLinesConfig>,
         mut views: Query<(&ExtractedView, &mut RenderPhase<Opaque3d>)>,
     ) {
+        let always_on_top = *config.always_on_top.read().unwrap();
         let draw_custom = opaque_3d_draw_functions
             .read()
             .get_id::<DrawDebugLines>()
@@ -150,7 +152,7 @@ pub mod r3d {
                         .specialize(
                             &mut pipeline_cache,
                             &debug_line_pipeline,
-                            (config.depth_test, key),
+                            (!always_on_top, key),
                             &mesh.layout,
                         )
                         .unwrap();
@@ -202,6 +204,7 @@ pub mod r2d {
 
     use super::super::{RenderDebugLinesMesh, DEBUG_LINES_SHADER_HANDLE};
 
+    #[derive(Resource)]
     pub(crate) struct DebugLinePipeline {
         mesh_pipeline: Mesh2dPipeline,
         shader: Handle<Shader>,
@@ -280,6 +283,7 @@ pub mod r2d {
         material_meshes: Query<(&Mesh2dUniform, &Mesh2dHandle), With<RenderDebugLinesMesh>>,
         mut views: Query<(&VisibleEntities, &mut RenderPhase<Transparent2d>)>,
     ) {
+        let always_on_top = *config.always_on_top.read().unwrap();
         for (view, mut phase) in views.iter_mut() {
             let draw_mesh2d = draw2d_functions.read().get_id::<DrawDebugLines>().unwrap();
             let msaa_key = Mesh2dPipelineKey::from_msaa_samples(msaa.samples);
@@ -291,10 +295,10 @@ pub mod r2d {
                             | Mesh2dPipelineKey::from_primitive_topology(
                                 PrimitiveTopology::LineList,
                             );
-                        let mesh_z = if config.depth_test {
-                            uniform.transform.w_axis.z
-                        } else {
+                        let mesh_z = if always_on_top {
                             f32::MAX
+                        } else {
+                            uniform.transform.w_axis.z
                         };
                         let pipeline = specialized_pipelines
                             .specialize(
