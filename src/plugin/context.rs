@@ -203,6 +203,8 @@ impl RapierContext {
             Query<(&RapierRigidBodyHandle, &mut TransformInterpolation)>,
         >,
     ) {
+        #[cfg(feature = "trace")]
+        let _span = bevy::utils::tracing::trace_span!("step_simulation").entered();
         let event_queue = events.map(|(ce, fe)| EventQueue {
             deleted_colliders: &self.deleted_colliders,
             collision_events: RwLock::new(ce),
@@ -224,17 +226,22 @@ impl RapierContext {
                 sim_to_render_time.diff += time.delta_seconds();
 
                 while sim_to_render_time.diff > 0.0 {
-                    // NOTE: in this comparison we do the same computations we
-                    // will do for the next `while` iteration test, to make sure we
-                    // don't get bit by potential float inaccuracy.
-                    if sim_to_render_time.diff - dt <= 0.0 {
-                        if let Some(interpolation_query) = interpolation_query.as_mut() {
-                            // This is the last simulation step to be executed in the loop
-                            // Update the previous state transforms
-                            for (handle, mut interpolation) in interpolation_query.iter_mut() {
-                                if let Some(body) = self.bodies.get(handle.0) {
-                                    interpolation.start = Some(*body.position());
-                                    interpolation.end = None;
+                    {
+                        #[cfg(feature = "trace")]
+                        let _span =
+                            bevy::utils::tracing::trace_span!("interpolation_query").entered();
+                        // NOTE: in this comparison we do the same computations we
+                        // will do for the next `while` iteration test, to make sure we
+                        // don't get bit by potential float inaccuracy.
+                        if sim_to_render_time.diff - dt <= 0.0 {
+                            if let Some(interpolation_query) = interpolation_query.as_mut() {
+                                // This is the last simulation step to be executed in the loop
+                                // Update the previous state transforms
+                                for (handle, mut interpolation) in interpolation_query.iter_mut() {
+                                    if let Some(body) = self.bodies.get(handle.0) {
+                                        interpolation.start = Some(*body.position());
+                                        interpolation.end = None;
+                                    }
                                 }
                             }
                         }
@@ -244,6 +251,9 @@ impl RapierContext {
                     substep_integration_parameters.dt = dt / (substeps as Real) * time_scale;
 
                     for _ in 0..substeps {
+                        #[cfg(feature = "trace")]
+                        let _span =
+                            bevy::utils::tracing::trace_span!("PhysicsPipeline::step").entered();
                         self.pipeline.step(
                             &(gravity / self.physics_scale).into(),
                             &substep_integration_parameters,
