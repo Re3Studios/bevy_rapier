@@ -39,7 +39,7 @@ impl Default for RapierDebugRenderPlugin {
     #[cfg(feature = "dim2")]
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             always_on_top: true,
             style: DebugRenderStyle {
                 rigid_body_axes_length: 20.0,
@@ -51,7 +51,7 @@ impl Default for RapierDebugRenderPlugin {
     #[cfg(feature = "dim3")]
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             always_on_top: false,
             style: DebugRenderStyle::default(),
             mode: DebugRenderMode::default(),
@@ -99,7 +99,7 @@ impl Plugin for RapierDebugRenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugin(lines::DebugLinesPlugin::always_on_top(self.always_on_top))
             .insert_resource(DebugRenderContext {
-                enabled: true,
+                enabled: self.enabled,
                 pipeline: DebugRenderPipeline::new(self.style, self.mode),
                 always_on_top: self.always_on_top,
             })

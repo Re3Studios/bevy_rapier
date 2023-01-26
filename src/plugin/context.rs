@@ -19,7 +19,7 @@ use bevy::render::primitives::Aabb;
 use crate::control::{CharacterCollision, MoveShapeOptions, MoveShapeOutput};
 use crate::dynamics::TransformInterpolation;
 use crate::plugin::configuration::{SimulationToRenderTime, TimestepMode};
-use crate::prelude::RapierRigidBodyHandle;
+use crate::prelude::{CollisionGroups, RapierRigidBodyHandle};
 #[cfg(feature = "dim2")]
 use bevy::math::Vec3Swizzles;
 use rapier::control::CharacterAutostep;
@@ -166,7 +166,7 @@ impl RapierContext {
     ) -> T {
         let mut rapier_filter = RapierQueryFilter {
             flags: filter.flags,
-            groups: filter.groups,
+            groups: filter.groups.map(CollisionGroups::into),
             exclude_collider: filter
                 .exclude_collider
                 .and_then(|c| entity2collider.get(&c).copied()),
@@ -265,6 +265,7 @@ impl RapierContext {
                             &mut self.impulse_joints,
                             &mut self.multibody_joints,
                             &mut self.ccd_solver,
+                            None,
                             hooks,
                             events,
                         );
@@ -294,6 +295,7 @@ impl RapierContext {
                         &mut self.impulse_joints,
                         &mut self.multibody_joints,
                         &mut self.ccd_solver,
+                        None,
                         hooks,
                         events,
                     );
@@ -315,6 +317,7 @@ impl RapierContext {
                         &mut self.impulse_joints,
                         &mut self.multibody_joints,
                         &mut self.ccd_solver,
+                        None,
                         hooks,
                         events,
                     );
@@ -333,8 +336,7 @@ impl RapierContext {
     /// Updates the state of the query pipeline, based on the collider positions known
     /// from the last timestep or the last call to `self.propagate_modified_body_positions_to_colliders()`.
     pub fn update_query_pipeline(&mut self) {
-        self.query_pipeline
-            .update(&self.islands, &self.bodies, &self.colliders);
+        self.query_pipeline.update(&self.bodies, &self.colliders);
     }
 
     /// The map from entities to rigid-body handles.

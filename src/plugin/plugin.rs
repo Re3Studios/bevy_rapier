@@ -99,13 +99,17 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> RapierPhysicsPlugin<P
                             .after(systems::apply_initial_rigid_body_impulses),
                     );
 
-                #[cfg(feature = "dim3")]
+                #[cfg(all(feature = "dim3", feature = "async-collider"))]
                 {
                     systems.with_system(
                         systems::init_async_scene_colliders.before(systems::init_async_colliders),
                     )
                 }
                 #[cfg(not(feature = "dim3"))]
+                {
+                    systems
+                }
+                #[cfg(feature = "headless")]
                 {
                     systems
                 }
@@ -185,7 +189,8 @@ impl<PhysicsHooksData: 'static + WorldQuery + Send + Sync> Plugin
             .register_type::<Restitution>()
             .register_type::<CollisionGroups>()
             .register_type::<SolverGroups>()
-            .register_type::<ContactForceEventThreshold>();
+            .register_type::<ContactForceEventThreshold>()
+            .register_type::<Group>();
 
         // Insert all of our required resources. Don’t overwrite
         // the `RapierConfiguration` if it already exists.

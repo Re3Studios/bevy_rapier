@@ -11,6 +11,7 @@ pub struct RapierRigidBodyHandle(pub RigidBodyHandle);
 
 /// A rigid-body.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Component, Reflect, FromReflect)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 #[reflect(Component, PartialEq)]
 pub enum RigidBody {
     /// A `RigidBody::Dynamic` body can be affected by all external forces.
@@ -50,12 +51,24 @@ impl From<RigidBody> for RigidBodyType {
     }
 }
 
+impl From<RigidBodyType> for RigidBody {
+    fn from(rigid_body: RigidBodyType) -> RigidBody {
+        match rigid_body {
+            RigidBodyType::Dynamic => RigidBody::Dynamic,
+            RigidBodyType::Fixed => RigidBody::Fixed,
+            RigidBodyType::KinematicPositionBased => RigidBody::KinematicPositionBased,
+            RigidBodyType::KinematicVelocityBased => RigidBody::KinematicVelocityBased,
+        }
+    }
+}
+
 /// The velocity of a rigid-body.
 ///
 /// Use this component to control and/or read the velocity of a dynamic or kinematic rigid-body.
 /// If this component isn’t present, a dynamic rigid-body will still be able to move (you will just
 /// not be able to read/modify its velocity).
 #[derive(Copy, Clone, Debug, Default, PartialEq, Component, Reflect, FromReflect)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 #[reflect(Component, PartialEq)]
 pub struct Velocity {
     /// The linear velocity of the rigid-body.
@@ -70,33 +83,42 @@ pub struct Velocity {
 
 impl Velocity {
     /// Initialize a velocity set to zero.
-    pub fn zero() -> Self {
-        Self::default()
+    pub const fn zero() -> Self {
+        Self {
+            linvel: Vect::ZERO,
+            #[cfg(feature = "dim2")]
+            angvel: 0.0,
+            #[cfg(feature = "dim3")]
+            angvel: Vect::ZERO,
+        }
     }
 
     /// Initialize a velocity with the given linear velocity, and an angular velocity of zero.
-    pub fn linear(linvel: Vect) -> Self {
+    pub const fn linear(linvel: Vect) -> Self {
         Self {
             linvel,
-            ..Self::default()
+            #[cfg(feature = "dim2")]
+            angvel: 0.0,
+            #[cfg(feature = "dim3")]
+            angvel: Vect::ZERO,
         }
     }
 
     /// Initialize a velocity with the given angular velocity, and a linear velocity of zero.
     #[cfg(feature = "dim2")]
-    pub fn angular(angvel: f32) -> Self {
+    pub const fn angular(angvel: f32) -> Self {
         Self {
+            linvel: Vect::ZERO,
             angvel,
-            ..Self::default()
         }
     }
 
     /// Initialize a velocity with the given angular velocity, and a linear velocity of zero.
     #[cfg(feature = "dim3")]
-    pub fn angular(angvel: Vect) -> Self {
+    pub const fn angular(angvel: Vect) -> Self {
         Self {
+            linvel: Vect::ZERO,
             angvel,
-            ..Self::default()
         }
     }
 }
@@ -494,3 +516,8 @@ impl TransformInterpolation {
         }
     }
 }
+
+/// Indicates whether or not the rigid-body is disabled explicitly by the user.
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, Component, Reflect, FromReflect)]
+#[reflect(Component, PartialEq)]
+pub struct RigidBodyDisabled;
