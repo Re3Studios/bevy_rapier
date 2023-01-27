@@ -322,22 +322,6 @@ pub fn apply_rigid_body_user_changes(
         }
     }
 
-    // Manually checks if the transform changed.
-    // This is needed for detecting if the user actually changed the rigid-body
-    // transform, or if it was just the change we made in our `writeback_rigid_bodies`
-    // system.
-    let transform_changed =
-        |handle: &RigidBodyHandle,
-         transform: &GlobalTransform,
-         last_transform_set: &HashMap<RigidBodyHandle, GlobalTransform>| {
-            if config.force_update_from_transform_changes {
-                true
-            } else if let Some(prev) = last_transform_set.get(handle) {
-                *prev != *transform
-            } else {
-                true
-            }
-        };
     {
         #[cfg(feature = "trace")]
         let _span =
