@@ -48,7 +48,7 @@ async-collider = [ ]
 bevy = { path = "./../../bevy", default-features = false }
 nalgebra = { version = "^0.32.0", features = [ "convert-glam022" ] }
 # Don't enable the default features because we don't need the ColliderSet/RigidBodySet
-rapier3d = "0.17.0"
+rapier3d = {path = "../../rapier/crates/rapier3d"}
 bitflags = "1"
 #bevy_prototype_debug_lines = { version = "0.6", features = ["3d"], optional = true }
 log = "0.4"
