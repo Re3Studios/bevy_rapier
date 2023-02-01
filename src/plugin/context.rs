@@ -251,9 +251,6 @@ impl RapierContext {
                     substep_integration_parameters.dt = dt / (substeps as Real) * time_scale;
 
                     for _ in 0..substeps {
-                        #[cfg(feature = "trace")]
-                        let _span =
-                            bevy::utils::tracing::trace_span!("PhysicsPipeline::step").entered();
                         self.pipeline.step(
                             &(gravity / self.physics_scale).into(),
                             &substep_integration_parameters,
