@@ -659,9 +659,9 @@ pub fn step_simulation<Hooks>(
         context.propagate_modified_body_positions_to_colliders();
     }
 
-    if config.query_pipeline_active {
-        context.update_query_pipeline();
-    }
+    // if config.query_pipeline_active {
+    //     context.update_query_pipeline();
+    // }
 }
 
 /// NOTE: This currently does nothing in 2D.
